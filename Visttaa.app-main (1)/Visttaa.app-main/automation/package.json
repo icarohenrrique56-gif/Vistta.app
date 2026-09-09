@@ -1,0 +1,9 @@
+{
+  "name": "vistta-automation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "analyze": "node src/analyze-issue.mjs",
+    "policy": "node src/policy-check.mjs"
+  }
+}

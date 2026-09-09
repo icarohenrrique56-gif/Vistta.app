@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^git remote -v && git branch --show-current && git branch -a$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

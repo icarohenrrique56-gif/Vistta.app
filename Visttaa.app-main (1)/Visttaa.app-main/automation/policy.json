@@ -1,0 +1,17 @@
+{
+  "allowedPrefixes": [
+    "src/",
+    "tests/",
+    "docs/"
+  ],
+  "blockedPrefixes": [
+    ".env",
+    ".sentryclirc",
+    "database.rules.json",
+    "firebase.json",
+    "functions/",
+    "package-lock.json",
+    "vite.config.ts"
+  ],
+  "maxChangedFiles": 8
+}

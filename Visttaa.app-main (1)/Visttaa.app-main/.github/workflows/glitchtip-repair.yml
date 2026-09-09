@@ -1,0 +1,146 @@
+name: GlitchTip repair proposal
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_id:
+        description: GlitchTip Issue ID
+        required: true
+        type: string
+      environment:
+        description: Environment of the Issue
+        required: true
+        default: production
+        type: string
+  repository_dispatch:
+    types: [glitchtip-issue]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  repair:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.client_payload.issue_id != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GLITCHTIP_ISSUE_ID: ${{ github.event.inputs.issue_id || github.event.client_payload.issue_id }}
+      GLITCHTIP_BASE_URL: ${{ secrets.GLITCHTIP_BASE_URL }}
+      GLITCHTIP_API_TOKEN: ${{ secrets.GLITCHTIP_API_TOKEN }}
+      AI_API_URL: ${{ secrets.AI_API_URL }}
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
+      AI_MODEL: ${{ secrets.AI_MODEL }}
+      AUTOMATION_OUTPUT_DIR: automation/artifacts
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create isolated repair branch
+        id: branch
+        shell: bash
+        run: |
+          branch="ai/fix-glitchtip-${GLITCHTIP_ISSUE_ID}-${GITHUB_RUN_ID}"
+          git switch --create "$branch"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Analyze, validate and retry at most three times
+        id: repair
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p automation/artifacts
+          feedback=""
+          passed=0
+          for attempt in 1 2 3; do
+            echo "Starting controlled repair attempt $attempt/3"
+            export AUTOMATION_FEEDBACK="$feedback"
+            export AUTOMATION_DIFF="$(git diff --no-ext-diff | head -c 16000)"
+            rm -f automation/artifacts/repair.patch
+            if ! node automation/src/analyze-issue.mjs; then
+              feedback="The analysis step failed on attempt $attempt. No patch was applied. Inspect the workflow logs and propose a smaller change."
+              continue
+            fi
+            if [[ ! -s automation/artifacts/repair.patch ]]; then
+              feedback="No safe patch was proposed on attempt $attempt. Explain the diagnosis without changing protected files."
+              continue
+            fi
+            if ! git apply --check automation/artifacts/repair.patch; then
+              feedback="The proposed patch did not apply cleanly on attempt $attempt. Return a valid unified diff for the current files."
+              continue
+            fi
+            git apply automation/artifacts/repair.patch
+            if ! changed=$( { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u ); then
+              feedback="Could not inspect changed files on attempt $attempt."
+              git diff --binary > "$RUNNER_TEMP/failed.patch" || true
+              git apply -R "$RUNNER_TEMP/failed.patch" || true
+              continue
+            fi
+            if ! printf '%s\n' "$changed" | node automation/src/policy-check.mjs; then
+              feedback="The patch violated the file policy on attempt $attempt. Only safe allowlisted frontend/docs/test files may change."
+              git diff --binary > "$RUNNER_TEMP/failed.patch" || true
+              git apply -R "$RUNNER_TEMP/failed.patch" || true
+              continue
+            fi
+            set +e
+            npm run typecheck > "$RUNNER_TEMP/validation-$attempt.log" 2>&1
+            typecheck_status=$?
+            npm run build >> "$RUNNER_TEMP/validation-$attempt.log" 2>&1
+            build_status=$?
+            if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
+              npm test >> "$RUNNER_TEMP/validation-$attempt.log" 2>&1
+              test_status=$?
+            else
+              test_status=0
+              printf '\nNo test script configured.\n' >> "$RUNNER_TEMP/validation-$attempt.log"
+            fi
+            npm run validate:sourcemaps >> "$RUNNER_TEMP/validation-$attempt.log" 2>&1
+            sourcemap_status=$?
+            set -e
+            cp "$RUNNER_TEMP/validation-$attempt.log" "automation/artifacts/validation-$attempt.log"
+            if [[ $typecheck_status -eq 0 && $build_status -eq 0 && $test_status -eq 0 && $sourcemap_status -eq 0 ]]; then
+              passed=1
+              break
+            fi
+            feedback="Validation failed on attempt $attempt. Here is the sanitized validation output:\n$(head -c 12000 "$RUNNER_TEMP/validation-$attempt.log")\nReturn a smaller corrected patch."
+            git diff --binary > "$RUNNER_TEMP/failed.patch" || true
+            git apply -R "$RUNNER_TEMP/failed.patch" || true
+          done
+          if [[ $passed -ne 1 ]]; then
+            echo "No repair passed validation after three attempts."
+            exit 1
+          fi
+          echo "passed=1" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and create draft PR
+        if: steps.repair.outputs.passed == '1'
+        shell: bash
+        run: |
+          git config user.name "vistta-automation[bot]"
+          git config user.email "vistta-automation[bot]@users.noreply.github.com"
+          git add src tests docs
+          git commit -m "fix: propose GlitchTip issue ${GLITCHTIP_ISSUE_ID}"
+          git push --set-upstream origin "${{ steps.branch.outputs.name }}"
+          summary=$(node -e "const fs=require('fs'); const p='automation/artifacts/analysis.json'; const a=JSON.parse(fs.readFileSync(p)); console.log(a.diagnosis || 'Diagnóstico disponível no artefato.');")
+          gh pr create --draft --base main --head "${{ steps.branch.outputs.name }}" --title "fix: proposta para GlitchTip #${GLITCHTIP_ISSUE_ID}" --body "## Issue\nGlitchTip: #${GLITCHTIP_ISSUE_ID}\n\n## Diagnóstico\n${summary}\n\n## Validação\n- npm run typecheck: PASSOU\n- npm run build: PASSOU\n- sourcemaps: PASSOU\n\nEste PR foi criado automaticamente para revisão humana. Nenhum deploy foi executado."
+
+      - name: Upload diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glitchtip-repair-${{ github.run_id }}
+          path: automation/artifacts/
+          if-no-files-found: ignore
