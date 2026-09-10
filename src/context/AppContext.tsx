@@ -273,8 +273,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const empresaRef = push(ref(db, 'empresas'));
-    if (!empresaRef.key) throw new Error('Não foi possível criar a empresa.');
+    const empresaIdDeterministica = `empresa-${user.uid}`;
     const empresaInfo = { nome: nomeNormalizado, criadoEm: new Date().toISOString(), criadoPor: user.uid, status: 'active' };
     const reportDatabaseFailure = (operation: string, path: string, error: any): never => {
       const code = error?.code || 'unknown';
@@ -286,7 +285,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setDatabaseError(diagnostic.message);
       throw diagnostic;
     };
-    const companyPath = `empresas/${empresaRef.key}/info`;
+    const companyPath = `empresas/${empresaIdDeterministica}/info`;
     const companyRuleChecks = {
       authenticated: Boolean(auth.currentUser?.uid),
       newCompany: true,
@@ -296,15 +295,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     console.info('[EMPRESA] Verificando empresa', { path: companyPath, uid: user.uid, role: profile.role, empresaId: profile.empresaId || null, ruleChecks: companyRuleChecks });
     const userPath = `users/${user.uid}`;
-    const profileUpdate = { empresaId: empresaRef.key, role: 'admin', status: 'active', email: user.email || '', updatedAt: new Date().toISOString() };
+    const profileUpdate = { empresaId: empresaIdDeterministica, role: 'admin', status: 'active', email: user.email || '', updatedAt: new Date().toISOString() };
     try {
       console.info('[EMPRESA] Criando empresa', { companyPath, criadoPor: user.uid });
       // As regras precisam validar a empresa já existente antes de autorizar o vínculo do perfil.
       await set(ref(db, companyPath), empresaInfo);
-      console.info('[EMPRESA] Vinculando perfil', { userPath, empresaId: empresaRef.key });
+      console.info('[EMPRESA] Vinculando perfil', { userPath, empresaId: empresaIdDeterministica });
       await update(ref(db, userPath), profileUpdate);
-      console.info('[EMPRESA] Ambiente criado', { path: companyPath, empresaId: empresaRef.key });
-      setEmpresaId(empresaRef.key);
+      console.info('[EMPRESA] Ambiente criado', { path: companyPath, empresaId: empresaIdDeterministica });
+      setEmpresaId(empresaIdDeterministica);
       setUserRole('admin');
       setDadosEmpresa({ nome: nomeNormalizado });
       setDatabaseError(null);
