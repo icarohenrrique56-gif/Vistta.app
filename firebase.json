@@ -1,0 +1,34 @@
+{
+  "functions": {
+    "source": "Visttaa.app/Visttaa.app-main/functions",
+    "runtime": "nodejs20"
+  },
+  "database": {
+    "rules": "Visttaa.app/Visttaa.app-main/database.rules.json"
+  },
+  "hosting": {
+    "public": "Visttaa.app/Visttaa.app-main/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
