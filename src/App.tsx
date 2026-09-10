@@ -23,7 +23,7 @@ const PlatformAdminScreen = lazy(() => import('./screens/PlatformAdminScreen').t
 const BackupScreen = lazy(() => import('./screens/BackupScreen').then(module => ({ default: module.BackupScreen })));
 
 function MainLayout() {
-  const { activeTab, user, loadingAuth, setActiveTab, carrinho, userRole, platformOwner, developerClaimsPending, dadosEmpresa, empresaId, databaseError, logout, clientes, produtos, vendas, ordensServico } = useAppContext();
+  const { activeTab, user, loadingAuth, setActiveTab, carrinho, userRole, platformOwner, developerClaimsPending, dadosEmpresa, empresaId, databaseError, accessDenied, logout, clientes, produtos, vendas, ordensServico } = useAppContext();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -128,6 +128,10 @@ function MainLayout() {
     return <DeveloperClaimsPending email={user.email || ''} onLogout={() => void logout()} />;
   }
 
+  if (accessDenied) {
+    return <AccessDeniedScreen message={databaseError || 'Não foi possível validar o acesso ao ambiente.'} onLogout={() => void logout()} />;
+  }
+
   const isAdminPath = window.location.pathname === '/admin' || window.location.pathname === '/developer' || activeTab === 'platform';
   if (isAdminPath) {
     return platformOwner ? <Suspense fallback={<ScreenLoading />}><PlatformAdminScreen /></Suspense> : <ForbiddenScreen />;
@@ -152,16 +156,37 @@ function MainLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative mobile-safe-bottom md:pb-0">
         <GrauAssistant />
         {databaseError && <div className="absolute top-0 left-0 right-0 z-50 bg-rose-600 text-white px-4 py-2 text-center text-sm font-semibold">{databaseError}</div>}
+
+        <div className="md:hidden fixed inset-x-0 top-0 z-50 border-b border-slate-200 bg-white/90 px-3 py-3 backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/90">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#30204d] text-[10px] font-black text-white shadow-sm">V</div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#6d4aff]">VISTTA</p>
+                <p className="truncate text-sm font-bold text-slate-800 dark:text-white">{dadosEmpresa?.nome || 'Minha Ótica'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setCommandOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" aria-label="Buscar no Vistta">
+                <Search size={16} />
+              </button>
+              <button onClick={toggleTheme} aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'} aria-pressed={isDark} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" title="Alternar tema">
+                {isDark ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div role="status" title={online ? 'Conectado ao Firebase' : 'Sem conexão: operações críticas estão bloqueadas'} className={`absolute right-28 top-4 z-40 hidden items-center gap-1 rounded-full border px-3 py-2 text-[11px] font-bold shadow-sm backdrop-blur sm:flex ${online ? 'border-emerald-200 bg-emerald-50/90 text-emerald-700' : 'border-amber-200 bg-amber-50/90 text-amber-700'}`}>
           {online ? <Wifi size={14} /> : <WifiOff size={14} />} {online ? 'Online' : 'Offline'}
         </div>
-        <button onClick={toggleTheme} aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'} aria-pressed={isDark} className="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-white/80 dark:bg-slate-800 border border-[#e7e1ec] dark:border-slate-700 flex items-center justify-center text-slate-500 hover:text-[#6d4aff] shadow-sm backdrop-blur" title="Alternar tema">
+        <button onClick={toggleTheme} aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'} aria-pressed={isDark} className="absolute top-4 right-4 z-40 hidden h-10 w-10 items-center justify-center rounded-full border border-[#e7e1ec] bg-white/80 text-slate-500 shadow-sm backdrop-blur hover:text-[#6d4aff] dark:border-slate-700 dark:bg-slate-800 sm:flex" title="Alternar tema">
           {isDark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
         <button type="button" onClick={() => setCommandOpen(true)} className="absolute top-4 right-16 z-40 hidden h-10 items-center gap-2 rounded-full border border-[#e7e1ec] bg-white/80 px-3 text-xs font-bold text-slate-500 shadow-sm backdrop-blur transition-colors hover:text-[#6d4aff] dark:border-slate-700 dark:bg-slate-800 sm:flex" title="Pesquisar no VISTTA (Ctrl+K)">
           <Search size={16} /> <span>Buscar</span><kbd className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] dark:bg-slate-700">Ctrl K</kbd>
         </button>
-      <main className="flex-1 overflow-y-auto p-4 pb-5 pt-16 sm:p-10 sm:pt-10 lg:p-12 relative z-10 custom-scrollbar h-full vistta-grid">
+      <main className="flex-1 overflow-y-auto p-4 pb-20 pt-20 sm:p-10 sm:pt-10 lg:p-12 relative z-10 custom-scrollbar h-full vistta-grid">
         <Suspense fallback={<ScreenLoading />}>
         {activeTab === 'dashboard' && <DashboardScreen />}
         {activeTab === 'vendas' && <PdvScreen />}
@@ -229,6 +254,10 @@ function MainLayout() {
 
 function ForbiddenScreen() {
   return <div className="vistta-shell flex min-h-[100dvh] items-center justify-center p-6"><div className="max-w-md rounded-3xl border border-[var(--vistta-border)] bg-[var(--vistta-surface)] p-8 text-center shadow-[0_20px_60px_rgba(48,32,77,.1)]"><h1 className="font-display text-2xl font-bold">Acesso não autorizado</h1><p className="mt-3 text-sm leading-6 text-[var(--vistta-secondary)]">Esta área é exclusiva do proprietário da plataforma.</p><a href="/" className="mt-6 inline-flex rounded-xl bg-[var(--vistta-plum)] px-5 py-3 text-sm font-bold text-white hover:bg-[var(--vistta-violet)]">Voltar ao sistema</a></div></div>;
+}
+
+function AccessDeniedScreen({ message, onLogout }: { message: string; onLogout: () => void }) {
+  return <div className="vistta-shell flex min-h-[100dvh] items-center justify-center p-6"><div className="max-w-md rounded-3xl border border-[var(--vistta-border)] bg-[var(--vistta-surface)] p-8 text-center shadow-[0_20px_60px_rgba(48,32,77,.1)]"><h1 className="font-display text-2xl font-bold">Acesso temporariamente bloqueado</h1><p className="mt-3 text-sm leading-6 text-[var(--vistta-secondary)]">{message}</p><button type="button" onClick={onLogout} className="mt-6 rounded-xl bg-[var(--vistta-plum)] px-5 py-3 text-sm font-bold text-white hover:bg-[var(--vistta-violet)]">Sair</button></div></div>;
 }
 
 function DeveloperClaimsPending({ email, onLogout }: { email: string; onLogout: () => void }) {

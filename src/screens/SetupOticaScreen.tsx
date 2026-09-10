@@ -23,6 +23,8 @@ export function SetupOticaScreen() {
     } catch (error: any) {
       if (error?.code === 'NETWORK_ERROR' || error?.code === 'network-request-failed') {
         setErro('Não foi possível conectar ao Firebase. Verifique sua conexão e tente novamente.');
+      } else if (error?.code === 'PERMISSION_DENIED' || error?.code === 'database/permission-denied') {
+        setErro('Não foi possível concluir o primeiro ambiente porque sua conta não está em um estado compatível. Atualize a página ou entre novamente.');
       } else {
         setErro(error?.message || 'Não foi possível salvar os dados da ótica.');
       }

@@ -53,6 +53,7 @@ interface AppContextType {
   empresaId: string | null;
   dadosEmpresa: { nome?: string } | null;
   databaseError: string | null;
+  accessDenied: boolean;
   configurarOtica: (nome: string) => Promise<void>;
   logout: () => Promise<void>;
   produtos: Produto[];
@@ -121,6 +122,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [dadosEmpresa, setDadosEmpresa] = useState<{ nome?: string } | null>(null);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
   
   const [activeTab, setActiveTabState] = useState(initialTab);
   const [pdvSearch, setPdvSearch] = useState('');
@@ -183,7 +185,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setPdvCliente(typeof saved.pdvCliente === 'string' ? saved.pdvCliente : '');
       setPdvDesconto(Number.isFinite(Number(saved.pdvDesconto)) ? Number(saved.pdvDesconto) : 0);
       setPdvPagamento(typeof saved.pdvPagamento === 'string' ? saved.pdvPagamento : 'Pix');
-    } catch (error) {
+    } catch (error: any) {
       console.warn('[PDV] Não foi possível restaurar a venda em andamento.', error);
     }
   }, [pdvStorageKey]);
@@ -256,16 +258,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const nomeNormalizado = nome.trim();
     if (!user) throw new Error('Usuário não autenticado.');
     if (!nomeNormalizado) throw new Error('Informe o nome da ótica.');
+    if (auth.currentUser?.uid !== user.uid) throw new Error('A sessão autenticada mudou. Entre novamente.');
     if (empresaId) return;
     setDatabaseError(null);
+    setAccessDenied(false);
 
     await ensureUserProfile(user);
 
     const userSnapshot = await get(ref(db, `users/${user.uid}`));
     const profile = userSnapshot.val() || {};
+    const operationId = `empresa-${user.uid}-${Date.now()}`;
     console.info('[USER] Role', { uid: user.uid, role: profile.role || null, status: profile.status || null });
     console.info('[USER] Empresa', { uid: user.uid, empresaId: profile.empresaId || null });
-    if (!profile.role || profile.role !== 'admin') {
+    console.info('[EMPRESA] Operação iniciada', { operationId, uid: user.uid, empresaId: profile.empresaId || null });
+    if (profile.status !== 'active') {
+      throw new Error('Sua conta não está ativa para criar o primeiro ambiente.');
+    }
+    if (profile.role !== 'admin') {
       throw new Error('Perfil do usuário não está em estado de administrador para criar uma empresa.');
     }
     if (profile.empresaId) {
@@ -273,8 +282,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
-    const empresaRef = push(ref(db, 'empresas'));
-    if (!empresaRef.key) throw new Error('Não foi possível criar a empresa.');
+    // O UID torna o primeiro ambiente determinístico e permite recuperar uma falha parcial.
+    const empresaIdInicial = `empresa-${user.uid}`;
     const empresaInfo = { nome: nomeNormalizado, criadoEm: new Date().toISOString(), criadoPor: user.uid, status: 'active' };
     const reportDatabaseFailure = (operation: string, path: string, error: any): never => {
       const code = error?.code || 'unknown';
@@ -286,7 +295,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setDatabaseError(diagnostic.message);
       throw diagnostic;
     };
-    const companyPath = `empresas/${empresaRef.key}/info`;
+    const companyPath = `empresas/${empresaIdInicial}/info`;
     const companyRuleChecks = {
       authenticated: Boolean(auth.currentUser?.uid),
       newCompany: true,
@@ -296,24 +305,33 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     console.info('[EMPRESA] Verificando empresa', { path: companyPath, uid: user.uid, role: profile.role, empresaId: profile.empresaId || null, ruleChecks: companyRuleChecks });
     const userPath = `users/${user.uid}`;
-    const profileUpdate = { empresaId: empresaRef.key, role: 'admin', status: 'active', email: user.email || '', updatedAt: new Date().toISOString() };
+    const profileUpdate = { empresaId: empresaIdInicial, role: 'admin', status: 'active', email: user.email || '', updatedAt: new Date().toISOString() };
+    let companyWriteError: any = null;
     try {
-      console.info('[EMPRESA] Criando empresa', { companyPath, criadoPor: user.uid });
-      // As regras precisam validar a empresa já existente antes de autorizar o vínculo do perfil.
+      console.info('[EMPRESA] Criando ou recuperando empresa', { operationId, companyPath, criadoPor: user.uid });
+      // A regra exige que a empresa exista antes do vínculo. Em uma repetição, a falha
+      // esperada da criação é recuperada pelo vínculo validado contra criadoPor.
       await set(ref(db, companyPath), empresaInfo);
-      console.info('[EMPRESA] Vinculando perfil', { userPath, empresaId: empresaRef.key });
+    } catch (error: any) {
+      companyWriteError = error;
+      console.warn('[EMPRESA] Criação já existente ou interrompida; tentando recuperar', { operationId, companyPath, code: error?.code });
+    }
+    try {
+      console.info('[EMPRESA] Vinculando perfil', { operationId, userPath, empresaId: empresaIdInicial });
       await update(ref(db, userPath), profileUpdate);
-      console.info('[EMPRESA] Ambiente criado', { path: companyPath, empresaId: empresaRef.key });
-      setEmpresaId(empresaRef.key);
+      console.info('[EMPRESA] Ambiente pronto', { operationId, path: companyPath, empresaId: empresaIdInicial, recovered: Boolean(companyWriteError) });
+      setAccessDenied(false);
+      setEmpresaId(empresaIdInicial);
       setUserRole('admin');
       setDadosEmpresa({ nome: nomeNormalizado });
       setDatabaseError(null);
       setActiveTab('dashboard');
       void trackEvent('empresa_criada');
     } catch (error: any) {
-      console.error('[EMPRESA] Erro ao criar ambiente', { companyPath, userPath, code: error?.code, message: error?.message, uid: user.uid });
-      captureFirebaseError(error, { module: 'autenticacao', action: 'configurar_empresa', operation: 'database_write' });
-      reportDatabaseFailure('criar ambiente', `${companyPath} e ${userPath}`, error);
+      const finalError = companyWriteError && error?.code === 'PERMISSION_DENIED' ? companyWriteError : error;
+      console.error('[EMPRESA] Erro ao criar ou recuperar ambiente', { operationId, companyPath, userPath, code: finalError?.code, message: finalError?.message, uid: user.uid });
+      captureFirebaseError(finalError, { module: 'autenticacao', action: 'configurar_empresa', operation: 'database_write' });
+      reportDatabaseFailure('criar ou recuperar ambiente', `${companyPath} e ${userPath}`, finalError);
     }
   };
 
@@ -336,6 +354,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setPdvDesconto(0);
     setPdvPagamento('Pix');
     setActiveTab('dashboard');
+    setAccessDenied(false);
   };
 
   const saveRecord = async (collection: string, data: Record<string, any>, id?: string) => {
@@ -420,6 +439,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           setUserRole('developer');
           setEmpresaId(null);
           setDadosEmpresa(null);
+          setAccessDenied(false);
           setLoadingAuth(false);
           return;
         }
@@ -465,23 +485,45 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
               const data = snap.val();
               console.info('[USER] Role', { uid: u.uid, role: data?.role || null, status: data?.status || null });
               console.info('[USER] Empresa', { uid: u.uid, empresaId: data?.empresaId || null });
-            setEmpresaId(data?.empresaId || null);
-            setUserRole(['admin', 'manager', 'seller', 'user'].includes(data?.role) ? (data.role === 'user' ? 'seller' : data.role) : null);
+            const normalizedRole = ['admin', 'manager', 'seller', 'user'].includes(data?.role) ? (data.role === 'user' ? 'seller' : data.role) : null;
+            const profileStatus = data?.status || null;
+            if (profileStatus !== 'active') {
+              setUser(u);
+              setEmpresaId(null);
+              setUserRole(null);
+              setDadosEmpresa(null);
+              setAccessDenied(true);
+              setDatabaseError('Sua conta está bloqueada ou inativa. Entre em contato com o administrador da plataforma.');
+              clearProfileTimeout();
+              setLoadingAuth(false);
+              console.info('[ENV] Acesso negado por status do perfil', { uid: u.uid, status: profileStatus });
+              return;
+            }
             if (data?.empresaId) {
                 try {
                   const companySnapshot = await get(ref(db, `empresas/${data.empresaId}/info`));
                   console.info('[EMPRESA] Ambiente da empresa carregado', { path: `empresas/${data.empresaId}/info`, exists: companySnapshot.exists(), empresaId: data.empresaId });
-                  setDadosEmpresa(companySnapshot.exists() ? companySnapshot.val() : null);
+                  if (!companySnapshot.exists()) {
+                    throw new Error('O ambiente associado ao perfil não existe.');
+                  }
+                  setEmpresaId(data.empresaId);
+                  setUserRole(normalizedRole);
+                  setDadosEmpresa(companySnapshot.val());
+                  setAccessDenied(false);
                 } catch (error: any) {
                   console.error('[EMPRESA] Erro ao carregar empresa', { path: `empresas/${data.empresaId}/info`, code: error?.code, message: error?.message, empresaId: data.empresaId, uid: u.uid });
                   captureFirebaseError(error, { module: 'autenticacao', action: 'carregar_empresa', operation: 'database_read' });
                   setEmpresaId(null);
                   setUserRole(null);
                   setDadosEmpresa(null);
+                  setAccessDenied(true);
                   setDatabaseError('Não foi possível validar o ambiente da sua ótica. Tente criar ou carregar o ambiente novamente.');
                 }
             } else {
+              setEmpresaId(null);
+              setUserRole(normalizedRole);
               setDadosEmpresa(null);
+              setAccessDenied(false);
             }
             setUser(u);
               clearProfileTimeout();
@@ -496,6 +538,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             setEmpresaId(null);
             setUserRole(null);
             setDadosEmpresa(null);
+            setAccessDenied(true);
             setDatabaseError('Não foi possível carregar seu perfil no Firebase. Verifique as regras do Realtime Database.');
             setUser(u);
             setLoadingAuth(false);
@@ -511,6 +554,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setUserRole(null);
         setPlatformOwner(false);
         setDadosEmpresa(null);
+        setAccessDenied(false);
         setDatabaseError(null);
         setLoadingAuth(false);
       }
@@ -856,7 +900,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const value = {
-    user, loadingAuth, userRole, platformOwner, developerClaimsPending, empresaId, dadosEmpresa, databaseError, configurarOtica, logout,
+    user, loadingAuth, userRole, platformOwner, developerClaimsPending, empresaId, dadosEmpresa, databaseError, accessDenied, configurarOtica, logout,
     produtos, clientes, vendas, caixas, orcamentos, ordensServico, carrinho,
     fornecedores, contas, categorias, usuarios,
     activeTab, setActiveTab, pdvSearch, setPdvSearch, abrirCaixa, fecharCaixa,
