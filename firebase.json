@@ -1,13 +1,9 @@
 {
-  "functions": {
-    "source": "Visttaa.app/Visttaa.app-main/functions",
-    "runtime": "nodejs20"
-  },
   "database": {
-    "rules": "Visttaa.app/Visttaa.app-main/database.rules.json"
+    "rules": "database.rules.json"
   },
   "hosting": {
-    "public": "Visttaa.app/Visttaa.app-main/dist",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",

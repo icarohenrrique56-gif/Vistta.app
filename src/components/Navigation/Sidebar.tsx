@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Home, Wallet, ShoppingCart, FileText, Boxes, Users, Tags, TrendingUp, ArrowRightLeft, UserPlus, LogOut, CircleHelp, Shield } from 'lucide-react';
+import { Home, Wallet, ShoppingCart, FileText, Boxes, Users, Tags, TrendingUp, ArrowRightLeft, UserPlus, LogOut, CircleHelp, Shield, Archive } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { CreatorLogo, LogoVistta } from '../SharedUI';
 import { Orcamento } from '../../types';
@@ -53,6 +53,7 @@ export function Sidebar() {
             <SidebarItem icon={TrendingUp} label="DRE Financeiro" active={activeTab === 'financeiro'} onClick={() => setActiveTab('financeiro')} collapsed={collapsed} />
             <SidebarItem icon={ArrowRightLeft} label="Contas" active={activeTab === 'contas'} onClick={() => setActiveTab('contas')} collapsed={collapsed} />
             <SidebarItem icon={UserPlus} label="Usuários" active={activeTab === 'usuarios'} onClick={() => setActiveTab('usuarios')} collapsed={collapsed} />
+            <SidebarItem icon={Archive} label="Backup e Exportação" active={activeTab === 'backup'} onClick={() => setActiveTab('backup')} collapsed={collapsed} />
           </>
         )}
         <SidebarCategory label="Suporte" />

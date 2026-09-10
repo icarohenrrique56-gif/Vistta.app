@@ -35,6 +35,8 @@ O VISTTA usa atualmente:
 - Extensions que dependam de Cloud Functions, Billing ou serviços pagos.
 - Recursos que ultrapassem as cotas gratuitas do produto.
 
+Como Cloud Functions Gen2 exige APIs de build/Artifact Registry que não podem ser habilitadas no Spark, o `firebase.json` padrão não registra Functions. Assim, `firebase deploy` publica somente Hosting e Realtime Database e não tenta ativar billing. A configuração isolada `firebase.functions.json` é mantida apenas para análise futura; não deve ser usada no Spark.
+
 ## Política obrigatória de custo
 
 O VISTTA deve permanecer no plano Spark e buscar custo de **R$ 0,00** sempre que tecnicamente possível. Nenhum agente, script ou automação pode habilitar billing, migrar para Blaze ou ativar recursos pagos sem autorização explícita.

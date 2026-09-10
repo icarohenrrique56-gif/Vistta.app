@@ -5,7 +5,7 @@ import { Caixa } from '../types';
 import { ScreenHeader } from '../components/SharedUI';
 
 export function CaixaScreen() {
-  const { caixaAberto, totalVendasCaixa, caixas, abrirCaixa, fecharCaixa, registrarLancamentoCaixa } = useAppContext();
+  const { caixaAberto, totalVendasCaixa, vendas, caixas, abrirCaixa, fecharCaixa, registrarLancamentoCaixa } = useAppContext();
   const [valorInicial, setValorInicial] = useState('0');
   const [processando, setProcessando] = useState(false);
   const [lancamento, setLancamento] = useState({ tipo: 'saida' as 'entrada' | 'saida' | 'sangria', descricao: '', valor: '' });
@@ -15,7 +15,9 @@ export function CaixaScreen() {
     try {
       await acao();
     } catch (error: any) {
-      alert(error.message || 'Não foi possível atualizar o caixa.');
+      const details = error && typeof error === 'object' ? JSON.stringify(error, Object.getOwnPropertyNames(error)) : String(error);
+      console.error('[CAIXA] Falha na operação:', { code: error?.code, message: error?.message, details, error });
+      alert(error?.message || `Não foi possível atualizar o caixa${error?.code ? ` (${error.code})` : ''}.`);
     } finally {
       setProcessando(false);
     }
@@ -68,7 +70,7 @@ export function CaixaScreen() {
         </div>
       )}
 
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto p-5 flex-1"><h3 className="font-bold mb-4">Histórico de caixas</h3><table className="w-full text-left min-w-[650px]"><thead><tr className="text-xs text-slate-400 uppercase border-b"><th className="py-3">Abertura</th><th>Operador</th><th>Fundo</th><th>Vendas</th><th>Saldo final</th></tr></thead><tbody>{caixas.filter((caixa: Caixa) => caixa.status === 'fechado').sort((a: Caixa, b: Caixa) => new Date(b.dataAbertura).getTime() - new Date(a.dataAbertura).getTime()).map((caixa: Caixa) => <tr key={caixa.id} className="border-b border-slate-50"><td className="py-3">{new Date(caixa.dataAbertura).toLocaleDateString('pt-BR')}</td><td>{caixa.operador}</td><td>{formatMoney(caixa.valorInicial)}</td><td className="text-emerald-500">{formatMoney(caixa.totalVendas || 0)}</td><td className="font-bold">{formatMoney(caixa.valorFinal || 0)}</td></tr>)}</tbody></table></div>
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto p-5 flex-1"><h3 className="font-bold mb-4">Histórico de caixas</h3><table className="w-full text-left min-w-[650px]"><thead><tr className="text-xs text-slate-400 uppercase border-b"><th className="py-3">Abertura</th><th>Operador</th><th>Fundo</th><th>Vendas</th><th>Saldo final</th></tr></thead><tbody>{caixas.filter((caixa: Caixa) => caixa.status === 'fechado').sort((a: Caixa, b: Caixa) => new Date(b.dataAbertura).getTime() - new Date(a.dataAbertura).getTime()).map((caixa: Caixa) => { const vendasDoCaixa = vendas.filter(venda => venda.caixaId === caixa.id); const totalVendas = vendasDoCaixa.reduce((total, venda) => total + Number(venda.total || 0), 0); const totalLancamentos = toList(caixa.lancamentos).reduce((total, item) => total + (item.tipo === 'entrada' ? Number(item.valor) : -Number(item.valor)), 0); return <tr key={caixa.id} className="border-b border-slate-50"><td className="py-3">{new Date(caixa.dataAbertura).toLocaleDateString('pt-BR')}</td><td>{caixa.operador}</td><td>{formatMoney(caixa.valorInicial)}</td><td className="text-emerald-500">{formatMoney(totalVendas)}</td><td className="font-bold">{formatMoney(Number(caixa.valorInicial || 0) + totalVendas + totalLancamentos)}</td></tr>; })}</tbody></table></div>
     </div>
   );
 }

@@ -12,8 +12,9 @@
     "bootstrap:functions": "if [ ! -d functions/node_modules ]; then npm install --prefix functions --prefer-offline --no-audit --no-fund; else echo 'Dependências do backend já instaladas.'; fi",
     "build:functions": "npm run bootstrap:functions && npm run build --prefix functions",
     "build:all": "npm run build:functions && npm run build",
-    "deploy:functions": "npm run bootstrap:functions && npm run build:functions && npx firebase-tools deploy --only functions",
-    "deploy:all": "npm run build:all && npx firebase-tools deploy --only functions,hosting,database",
+    "deploy:functions": "echo 'ESTA FUNCIONALIDADE EXIGE BLAZE: Cloud Functions Gen2 não serão publicadas no plano Spark.' && exit 1",
+    "deploy:spark": "npm run build && npx firebase-tools deploy --only hosting,database",
+    "deploy:all": "npm run deploy:spark",
     "upload:sourcemaps": "npx @sentry/cli sourcemaps upload ./dist --org vistta-erp --project vistta-erp --release $npm_package_name@$npm_package_version",
     "deploy:hosting": "npm run build && npm run upload:sourcemaps && npx firebase-tools deploy --only hosting",
     "preview": "vite preview"

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
-import { ref, push, update, remove, onValue, query, limitToLast, orderByChild, startAt, equalTo, get, set } from 'firebase/database';
+import { ref, push, update, remove, onValue, query, limitToLast, orderByChild, startAt, equalTo, get, set, runTransaction } from 'firebase/database';
 import { onAuthStateChanged, sendPasswordResetEmail, signOut, User } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, firebaseFunctions } from '../config/firebase';
@@ -616,14 +616,44 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!Number.isFinite(valorInicial) || valorInicial < 0) throw new Error('Informe um valor inicial válido.');
     if (userRole !== 'admin' && userRole !== 'manager') throw new Error('Somente gestores podem abrir o caixa.');
     if (caixaAberto) throw new Error('Já existe um caixa aberto nesta empresa.');
-    await httpsCallable(firebaseFunctions, 'openCash')({ requestId: crypto.randomUUID(), valorInicial });
+    if (!empresaId || !user?.uid) throw new Error('Sessão ou empresa não disponível.');
+    const caixaRef = push(ref(db, `empresas/${empresaId}/caixas`));
+    if (!caixaRef.key) throw new Error('Não foi possível gerar o caixa.');
+    const caixa = {
+      dataAbertura: new Date().toISOString(),
+      valorInicial,
+      status: 'aberto' as const,
+      operador: user.uid
+    };
+    await update(ref(db), {
+      [`empresas/${empresaId}/caixas/${caixaRef.key}`]: caixa,
+      [`empresas/${empresaId}/caixaStatus`]: { aberto: true, caixaId: caixaRef.key }
+    });
   };
 
   const fecharCaixa = async () => {
     const caixa = caixaAberto;
     if (!caixa) throw new Error('Nenhum caixa aberto.');
     if (userRole !== 'admin' && userRole !== 'manager') throw new Error('Somente gestores podem fechar o caixa.');
-    await httpsCallable(firebaseFunctions, 'closeCash')({ requestId: crypto.randomUUID(), caixaId: caixa.id });
+    if (!empresaId || !user?.uid) throw new Error('Sessão ou empresa não disponível.');
+    const caixaRef = ref(db, `empresas/${empresaId}/caixas/${caixa.id}`);
+    try {
+      const result = await runTransaction(caixaRef, (current: Record<string, any> | null) => {
+        if (!current || current.status !== 'aberto') return;
+        if (userRole !== 'admin' && current.operador !== user.uid) return;
+        return {
+          ...current,
+          status: 'fechado',
+          dataFechamento: new Date().toISOString(),
+          closedAt: Date.now(),
+          fechadoPor: user.uid
+        };
+      });
+      if (!result.committed) throw new Error('O caixa já foi fechado ou não pertence ao operador atual.');
+      await update(ref(db, `empresas/${empresaId}/caixaStatus`), { aberto: false, caixaId: caixa.id });
+    } catch (error: any) {
+      throw error;
+    }
   };
 
   const salvarProduto = async (data: Partial<Produto>, id?: string) => {
@@ -712,7 +742,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!caixa) throw new Error('Abra o caixa antes de registrar um lançamento.');
     if (userRole !== 'admin' && userRole !== 'manager') throw new Error('Somente gestores podem registrar movimentos.');
     if (!Number.isFinite(data.valor) || data.valor <= 0) throw new Error('Informe um valor válido.');
-    await httpsCallable(firebaseFunctions, 'addCashEntry')({ requestId: crypto.randomUUID(), caixaId: caixa.id, ...data });
+    if (!empresaId || !user?.uid) throw new Error('Sessão ou empresa não disponível.');
+    const entryRef = push(ref(db, `empresas/${empresaId}/caixas/${caixa.id}/lancamentos`));
+    if (!entryRef.key) throw new Error('Não foi possível gerar o lançamento.');
+    await set(entryRef, { ...data, data: new Date().toISOString(), operador: user.uid });
   };
 
   const requirePlatformOwner = () => {

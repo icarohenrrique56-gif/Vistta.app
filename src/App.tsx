@@ -3,7 +3,7 @@ import { AppProvider, useAppContext } from './context/AppContext';
 import { Sidebar } from './components/Navigation/Sidebar';
 import { GrauAssistant } from './components/GrauAssistant';
 
-import { Home, ShoppingCart, Boxes, Users, Menu, Moon, Sun, LogOut, Search, X, Plus, ArrowRight } from 'lucide-react';
+import { Home, ShoppingCart, Boxes, Users, Menu, Moon, Sun, LogOut, Search, X, Plus, ArrowRight, Wifi, WifiOff } from 'lucide-react';
 import { LogoVistta } from './components/SharedUI';
 
 const AuthScreen = lazy(() => import('./screens/AuthScreen').then(module => ({ default: module.AuthScreen })));
@@ -20,6 +20,7 @@ const OrdensServicoScreen = lazy(() => import('./screens/OrdensServicoScreen').t
 const HelpScreen = lazy(() => import('./screens/HelpScreen').then(module => ({ default: module.HelpScreen })));
 const SetupOticaScreen = lazy(() => import('./screens/SetupOticaScreen').then(module => ({ default: module.SetupOticaScreen })));
 const PlatformAdminScreen = lazy(() => import('./screens/PlatformAdminScreen').then(module => ({ default: module.PlatformAdminScreen })));
+const BackupScreen = lazy(() => import('./screens/BackupScreen').then(module => ({ default: module.BackupScreen })));
 
 function MainLayout() {
   const { activeTab, user, loadingAuth, setActiveTab, carrinho, userRole, platformOwner, developerClaimsPending, dadosEmpresa, empresaId, databaseError, logout, clientes, produtos, vendas, ordensServico } = useAppContext();
@@ -27,6 +28,17 @@ function MainLayout() {
   const [isDark, setIsDark] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
+  const [online, setOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    const updateOnline = () => setOnline(navigator.onLine);
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+    return () => {
+      window.removeEventListener('online', updateOnline);
+      window.removeEventListener('offline', updateOnline);
+    };
+  }, []);
 
   useEffect(() => {
     const dark = localStorage.getItem('otica_theme') === 'dark';
@@ -133,6 +145,9 @@ function MainLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative mobile-safe-bottom md:pb-0">
         <GrauAssistant />
         {databaseError && <div className="absolute top-0 left-0 right-0 z-50 bg-rose-600 text-white px-4 py-2 text-center text-sm font-semibold">{databaseError}</div>}
+        <div role="status" title={online ? 'Conectado ao Firebase' : 'Sem conexão: operações críticas estão bloqueadas'} className={`absolute right-28 top-4 z-40 hidden items-center gap-1 rounded-full border px-3 py-2 text-[11px] font-bold shadow-sm backdrop-blur sm:flex ${online ? 'border-emerald-200 bg-emerald-50/90 text-emerald-700' : 'border-amber-200 bg-amber-50/90 text-amber-700'}`}>
+          {online ? <Wifi size={14} /> : <WifiOff size={14} />} {online ? 'Online' : 'Offline'}
+        </div>
         <button onClick={toggleTheme} aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'} aria-pressed={isDark} className="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-white/80 dark:bg-slate-800 border border-[#e7e1ec] dark:border-slate-700 flex items-center justify-center text-slate-500 hover:text-[#6d4aff] shadow-sm backdrop-blur" title="Alternar tema">
           {isDark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
@@ -150,6 +165,7 @@ function MainLayout() {
         {activeTab === 'orcamentos' && <OrcamentosScreen />}
         {activeTab === 'ordens' && <OrdensServicoScreen />}
         {activeTab === 'ajuda' && <HelpScreen />}
+        {activeTab === 'backup' && <BackupScreen />}
         
         {activeTab === 'financeiro' && <FinanceiroScreen />}
         {['fornecedores', 'contas', 'categorias', 'usuarios'].includes(activeTab) && (
@@ -174,7 +190,7 @@ function MainLayout() {
             {[
               ...(platformOwner ? [['platform', 'Administração global']] : []),
               ...(userRole === 'seller' ? [['minhas-vendas', 'Minhas Vendas']] : [['caixa', 'Caixa Diário'], ['orcamentos', 'Orçamentos'], ['ordens', 'Ordens de Serviço'], ['categorias', 'Categorias'], ['ajuda', 'Ajuda e Treinamento']]),
-              ...(userRole === 'admin' || userRole === 'manager' ? [['financeiro', 'Financeiro'], ['contas', 'Contas'], ['fornecedores', 'Fornecedores'], ['usuarios', 'Vendedores']] : [])
+              ...(userRole === 'admin' || userRole === 'manager' ? [['financeiro', 'Financeiro'], ['contas', 'Contas'], ['fornecedores', 'Fornecedores'], ['usuarios', 'Vendedores'], ['backup', 'Backup e Exportação']] : [])
             ].map(([tab, label]) => <button key={tab} onClick={() => { if (tab === 'platform') window.history.pushState({}, '', '/admin'); setActiveTab(tab); setMobileMenuOpen(false); }} className="w-full text-left px-4 py-3 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-slate-700">{label}</button>)}
           </div>
           <button onClick={() => logout().catch((error) => console.error('Não foi possível sair:', error))} className="mt-6 flex w-full items-center gap-3 border-t border-slate-100 px-4 pt-5 text-left font-bold text-rose-500 dark:border-slate-700"><LogOut size={18} /> Sair da conta</button>

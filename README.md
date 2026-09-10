@@ -1,16 +1,13 @@
 # Vistta.app
 
-## Raiz do projeto
+## Aplicação
 
-A aplicação ativa está em:
+Esta é a raiz única do projeto. O frontend React/Vite está em [`src/`](/workspaces/Vistta.app/src), as Cloud Functions em [`functions/`](/workspaces/Vistta.app/functions) e a configuração Firebase em [`firebase.json`](/workspaces/Vistta.app/firebase.json).
 
-[`Visttaa.app/Visttaa.app-main`](Visttaa.app/Visttaa.app-main)
-
-Execute os comandos do projeto a partir dessa pasta:
+Execute os comandos diretamente daqui:
 
 ```bash
-cd Visttaa.app/Visttaa.app-main
 npm run dev
 ```
 
-Ela contém o frontend React/Vite, as Cloud Functions, a configuração do Firebase e o `package-lock.json` correto. Não execute `npm install` na raiz deste repositório, pois ela não é a raiz do aplicativo.
+O build de produção é gerado em `dist/`. Não há uma segunda aplicação aninhada neste repositório.
