@@ -33,6 +33,7 @@ const pathToTab: Record<string, string> = {
   '/contas': 'contas',
   '/categorias': 'categorias',
   '/usuarios': 'usuarios',
+  '/backup': 'backup',
   '/ajuda': 'ajuda',
   '/admin': 'platform',
   '/developer': 'platform'
