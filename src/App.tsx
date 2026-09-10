@@ -76,20 +76,27 @@ function MainLayout() {
   };
 
   const normalizedQuery = commandQuery.trim().toLocaleLowerCase('pt-BR');
+  const quickActions = [
+    { label: 'Nova venda', detail: 'Abrir o ponto de venda', tab: 'vendas', keywords: 'venda pdv nova' },
+    { label: 'Cadastrar cliente', detail: 'Criar um novo cadastro', tab: 'clientes', keywords: 'cliente cadastrar novo' },
+    { label: 'Abrir caixa', detail: 'Consultar o caixa diário', tab: 'caixa', keywords: 'caixa abrir' },
+    { label: 'Fechar caixa', detail: 'Ir para o fechamento do caixa', tab: 'caixa', keywords: 'caixa fechar fechamento' },
+    { label: 'Ver estoque baixo', detail: 'Encontrar produtos críticos', tab: 'estoque', keywords: 'estoque baixo crítico' },
+    { label: 'Ver clientes para retorno', detail: 'Encontrar clientes sem compra recente', tab: 'clientes', keywords: 'clientes retorno inativos sem comprar' },
+    { label: 'Nova ordem de serviço', detail: 'Acompanhar produção e retirada', tab: 'ordens', keywords: 'ordem serviço os' },
+    { label: 'Abrir Centro de Dados', detail: 'Exportar e validar dados', tab: 'backup', keywords: 'backup exportar importar dados' },
+    { label: 'Ver orçamentos', detail: 'Retomar propostas pendentes', tab: 'orcamentos', keywords: 'orçamento proposta' }
+  ];
+  const actionResults = normalizedQuery.length < 2 ? [] : quickActions
+    .filter(action => `${action.label} ${action.detail} ${action.keywords}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery))
+    .map(action => ({ type: 'Ação', label: action.label, detail: action.detail, tab: action.tab }));
   const searchResults = normalizedQuery.length < 2 ? [] : [
+    ...actionResults,
     ...clientes.filter(item => `${item.nome} ${item.cpf} ${item.tel}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery)).slice(0, 4).map(item => ({ type: 'Cliente', label: item.nome, detail: item.tel || item.cpf, tab: 'clientes' })),
     ...produtos.filter(item => `${item.marca} ${item.modelo} ${item.codigo}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery)).slice(0, 4).map(item => ({ type: 'Produto', label: `${item.marca} ${item.modelo}`, detail: item.codigo, tab: 'estoque' })),
     ...vendas.filter(item => `${item.id} ${item.pag}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery)).slice(0, 4).map(item => ({ type: 'Venda', label: `Venda ${item.id.slice(-6)}`, detail: item.pag, tab: 'vendas' })),
     ...ordensServico.filter(item => `${item.id} ${item.clienteId} ${item.status}`.toLocaleLowerCase('pt-BR').includes(normalizedQuery)).slice(0, 4).map(item => ({ type: 'Ordem de serviço', label: `OS ${item.id.slice(-6)}`, detail: item.status.replace(/_/g, ' '), tab: 'ordens' }))
   ].slice(0, 8);
-
-  const quickActions = [
-    { label: 'Nova venda', detail: 'Abrir o ponto de venda', tab: 'vendas' },
-    { label: 'Novo cliente', detail: 'Cadastrar uma pessoa', tab: 'clientes' },
-    { label: 'Novo orçamento', detail: 'Montar uma proposta', tab: 'orcamentos' },
-    { label: 'Nova ordem de serviço', detail: 'Acompanhar produção', tab: 'ordens' },
-    { label: 'Entrada de estoque', detail: 'Consultar e ajustar produtos', tab: 'estoque' }
-  ];
 
   // Tela de carregamento enquanto o Firebase verifica o login
   if (loadingAuth) {
@@ -204,9 +211,9 @@ function MainLayout() {
             <button type="button" onClick={() => { setCommandOpen(false); setCommandQuery(''); }} aria-label="Fechar busca" className="rounded-full p-2 text-[var(--vistta-secondary)] hover:bg-[var(--vistta-muted-surface)]"><X size={18} /></button>
           </div>
           <div className="max-h-[55vh] overflow-y-auto p-3">
-            {normalizedQuery.length < 2 || normalizedQuery === 'nova' ? <>
-              <p className="px-3 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[.16em] text-[var(--vistta-secondary)]">Ações rápidas</p>
-              {quickActions.map(action => <button key={action.tab} type="button" onClick={() => openModule(action.tab)} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-[var(--vistta-muted-surface)]"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--vistta-lavender)] text-[var(--vistta-violet)]"><Plus size={17} /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-[var(--vistta-ink)] dark:text-white">{action.label}</strong><small className="text-xs text-[var(--vistta-secondary)]">{action.detail}</small></span><ArrowRight size={16} className="text-[var(--vistta-secondary)]" /></button>)}
+            {normalizedQuery.length < 2 ? <>
+              <p className="px-3 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[.16em] text-[var(--vistta-secondary)]">Ações rápidas · Ctrl K</p>
+              {quickActions.slice(0, 5).map(action => <button key={action.label} type="button" onClick={() => openModule(action.tab)} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-[var(--vistta-muted-surface)]"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--vistta-lavender)] text-[var(--vistta-violet)]"><Plus size={17} /></span><span className="min-w-0 flex-1"><strong className="block text-sm text-[var(--vistta-ink)] dark:text-white">{action.label}</strong><small className="text-xs text-[var(--vistta-secondary)]">{action.detail}</small></span><ArrowRight size={16} className="text-[var(--vistta-secondary)]" /></button>)}
             </> : searchResults.length ? <>
               <p className="px-3 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[.16em] text-[var(--vistta-secondary)]">Resultados</p>
               {searchResults.map((result, index) => <button key={`${result.type}-${result.label}-${index}`} type="button" onClick={() => openModule(result.tab)} className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-[var(--vistta-muted-surface)]"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--vistta-lavender)] text-[var(--vistta-violet)]"><Search size={16} /></span><span className="min-w-0 flex-1"><small className="block text-[10px] font-bold uppercase tracking-wider text-[var(--vistta-violet)]">{result.type}</small><strong className="block truncate text-sm text-[var(--vistta-ink)] dark:text-white">{result.label}</strong><small className="block truncate text-xs text-[var(--vistta-secondary)]">{result.detail}</small></span><ArrowRight size={16} className="text-[var(--vistta-secondary)]" /></button>)}

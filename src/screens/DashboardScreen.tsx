@@ -1,5 +1,5 @@
 import React from 'react';
-import { Boxes, TrendingUp, Users, AlertTriangle, ShoppingCart, ArrowUpRight, FileText, Wrench, UserPlus, Search, Activity } from 'lucide-react';
+import { Boxes, TrendingUp, Users, AlertTriangle, ShoppingCart, ArrowUpRight, FileText, Wrench, UserPlus, Search, Activity, Clock3 } from 'lucide-react';
 import { useAppContext, formatMoney } from '../context/AppContext';
 import { ActionCard, DashCard, ScreenHeader } from '../components/SharedUI';
 
@@ -31,6 +31,12 @@ export function DashboardScreen() {
     const prazo = new Date(`${o.previsaoEntrega}T23:59:59`);
     return !Number.isNaN(prazo.getTime()) && prazo < now;
   }).length;
+  const clientesParaRetorno = clientes.filter(cliente => {
+    const lastPurchase = cliente.ultimaCompraOculos || cliente.ultimaCompraLente;
+    if (!lastPurchase) return true;
+    const date = new Date(lastPurchase);
+    return !Number.isNaN(date.getTime()) && (now.getTime() - date.getTime()) > 365 * 24 * 60 * 60 * 1000;
+  }).length;
   const salesByDay = vendas.reduce<Record<string, number>>((acc, venda) => {
     const date = new Date(venda.data);
     if (Number.isNaN(date.getTime())) return acc;
@@ -52,6 +58,16 @@ export function DashboardScreen() {
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? 'Bom dia' : currentHour < 18 ? 'Boa tarde' : 'Boa noite';
   const displayName = user?.displayName || user?.email?.split('@')[0] || '';
+  const lastContext = (() => {
+    try { return JSON.parse(localStorage.getItem('vistta:last-context') || 'null') as { tab?: string; at?: string } | null; } catch { return null; }
+  })();
+  const lastContextLabel: Record<string, string> = { vendas: 'PDV', clientes: 'Clientes', estoque: 'Estoque', caixa: 'Caixa Diário', orcamentos: 'Orçamentos', ordens: 'Ordens de Serviço' };
+  const attentionItems = [
+    { label: `${osAtrasadas} pedido${osAtrasadas === 1 ? '' : 's'} atrasado${osAtrasadas === 1 ? '' : 's'}`, detail: 'Revisar prazos das OS', count: osAtrasadas, tab: 'ordens', tone: 'bg-rose-50 text-rose-700' },
+    { label: `${orcamentosPendentes} orçamento${orcamentosPendentes === 1 ? '' : 's'} pendente${orcamentosPendentes === 1 ? '' : 's'}`, detail: 'Retomar contato com clientes', count: orcamentosPendentes, tab: 'orcamentos', tone: 'bg-amber-50 text-amber-700' },
+    { label: `${estoqueCritico} produto${estoqueCritico === 1 ? '' : 's'} com estoque baixo`, detail: 'Ver itens críticos', count: estoqueCritico, tab: 'estoque', tone: 'bg-orange-50 text-orange-700' },
+    { label: `${clientesParaRetorno} cliente${clientesParaRetorno === 1 ? '' : 's'} para retorno`, detail: 'Revisar relacionamento', count: clientesParaRetorno, tab: 'clientes', tone: 'bg-indigo-50 text-indigo-700' }
+  ].filter(item => item.count > 0);
   
   return (
     <div className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-4 pb-2 vistta-enter sm:gap-5">
@@ -65,6 +81,15 @@ export function DashboardScreen() {
         <DashCard title="Clientes Base" value={clientes.length} subtitle="cadastros ativos" icon={Users} onClick={() => setActiveTab('clientes')} />
         <DashCard title="Estoque Crítico" value={estoqueCritico} subtitle={estoqueCritico ? 'requer atenção' : 'operação saudável'} icon={AlertTriangle} onClick={() => setActiveTab('estoque')} bg={estoqueCritico ? 'bg-[#fff5ed]' : 'bg-white dark:bg-slate-800'} color={estoqueCritico ? 'text-orange-500' : 'text-emerald-500'} border={estoqueCritico ? 'border-orange-100' : 'border-slate-100 dark:border-slate-700'} />
       </div>
+
+      <section className="rounded-[22px] border border-[#e7e1ec] bg-white p-4 shadow-[0_10px_35px_rgba(48,32,77,.05)] dark:border-[#3d3154] dark:bg-[#211936] sm:rounded-[26px] sm:p-6">
+        <div className="mb-4 flex items-center justify-between"><div><p className="mb-1 text-[10px] font-bold uppercase tracking-[.16em] text-[#6d4aff] sm:text-xs">Meu dia</p><h2 className="font-display text-lg font-bold text-[#201735] dark:text-white sm:text-xl">O que exige atenção agora</h2></div><Clock3 size={20} className="text-[#6d4aff]" /></div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {attentionItems.length ? attentionItems.map(item => <button key={item.label} onClick={() => setActiveTab(item.tab)} className={`flex items-center justify-between rounded-2xl p-4 text-left transition-transform hover:-translate-y-0.5 ${item.tone}`}><span><strong className="block text-sm">{item.label}</strong><small className="mt-1 block opacity-75">{item.detail}</small></span><ArrowUpRight size={17} /></button>) : <div className="rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700 md:col-span-3">Tudo em ordem por enquanto. Continue acompanhando suas vendas e o caixa.</div>}
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-2xl bg-[#f7f3ff] p-3"><small className="block text-xs text-slate-500">Vendas hoje</small><strong className="text-lg text-[#30204d]">{vendasHoje.length}</strong></div><div className="rounded-2xl bg-[#edf8f4] p-3"><small className="block text-xs text-slate-500">Caixa</small><strong className="text-lg text-[#30204d]">{formatMoney(caixaAberto ? faturamentoHoje : 0)}</strong></div><div className="rounded-2xl bg-[#fff5ed] p-3"><small className="block text-xs text-slate-500">Orçamentos</small><strong className="text-lg text-[#30204d]">{orcamentosPendentes}</strong></div><div className="rounded-2xl bg-[#eeeaff] p-3"><small className="block text-xs text-slate-500">OS abertas</small><strong className="text-lg text-[#30204d]">{osPendentes}</strong></div></div>
+      </section>
+      {lastContext?.tab && lastContext.tab !== 'dashboard' && <section className="flex items-center justify-between gap-4 rounded-[22px] border border-[#e7e1ec] bg-[#f7f3ff] p-4 dark:border-[#3d3154] dark:bg-[#2d2544] sm:p-5"><div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#6d4aff]">Continue de onde parou</p><p className="mt-1 text-sm font-semibold text-[#30204d] dark:text-white">Você estava trabalhando em {lastContextLabel[lastContext.tab] || lastContext.tab}.</p><small className="text-xs text-slate-500">O contexto é salvo apenas neste navegador.</small></div><button onClick={() => setActiveTab(lastContext.tab || 'dashboard')} className="shrink-0 rounded-xl bg-[#30204d] px-4 py-2 text-xs font-bold text-white">Continuar</button></section>}
 
       <div className="mb-1 grid grid-cols-1 gap-4 xl:grid-cols-[1.45fr_.8fr]">
         <section className="relative overflow-hidden rounded-[22px] bg-[#30204d] p-4 text-white shadow-[0_18px_45px_rgba(48,32,77,.15)] sm:rounded-[26px] sm:p-6 sm:p-7">

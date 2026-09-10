@@ -148,6 +148,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
+    localStorage.setItem('vistta:last-context', JSON.stringify({ tab, at: new Date().toISOString() }));
     const nextPath = tabToPath(tab);
     if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath);
   };

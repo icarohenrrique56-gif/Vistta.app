@@ -15,15 +15,42 @@ const guideByTab: Record<string, { title: string; text: string; action?: GrauAct
   ordens: { title: 'Ordens de Serviço', text: 'Acompanhe a montagem, o laboratório, a retirada e os demais status da ordem de serviço.', action: { label: 'Ver Ordens', tab: 'ordens' } },
   caixa: { title: 'Caixa Diário', text: 'A abertura, os movimentos e o fechamento do caixa são controlados nesta área.' },
   financeiro: { title: 'Financeiro', text: 'Esta área apresenta DRE, contas a pagar e a receber e fluxo de caixa para perfis de gestão.' },
+  contas: { title: 'Contas', text: 'Aqui você acompanha contas financeiras cadastradas. O acesso é restrito aos perfis de gestão.' },
+  fornecedores: { title: 'Fornecedores', text: 'Cadastre e consulte fornecedores para organizar compras e abastecimento da ótica.' },
+  categorias: { title: 'Categorias', text: 'Organize produtos por categorias para facilitar o cadastro e a consulta do estoque.' },
+  backup: { title: 'Centro de Dados', text: 'Exporte dados em JSON ou CSV, crie backups locais, valide manifestos e consulte a integridade sem alterar o banco.' },
   usuarios: { title: 'Vendedores', text: 'Gestores e administradores podem criar, editar, ativar e desativar vendedores.' },
   ajuda: { title: 'Ajuda', text: 'A Central de Ajuda reúne os fluxos principais do Vistta para consulta rápida.' }
 };
 
 function answerQuestion(question: string, tab: string, role: string | null, context: GrauContext): GrauMessage {
   const normalized = question.toLocaleLowerCase('pt-BR');
+  if (/(como funciona|explica.*sistema|explicar.*sistema|módulos|modulos|o que posso fazer|visão geral)/.test(normalized)) {
+    return {
+      from: 'grau',
+      text: 'O Vistta organiza a rotina da ótica em cinco frentes: Dashboard para prioridades, PDV para vendas, Caixa para abertura e fechamento, Cadastros para clientes/estoque/fornecedores e Gestão para financeiro e usuários. Orçamentos e Ordens de Serviço acompanham o atendimento até a entrega. Você pode perguntar “como faço uma venda?”, “como fecho o caixa?” ou “onde cadastro um cliente?”.'
+    };
+  }
+  if (/(permiss(ão|oes)|acesso|quem pode|seguran)/.test(normalized)) {
+    return {
+      from: 'grau',
+      text: role === 'seller'
+        ? 'Seu perfil é vendedor. Você pode operar o PDV, consultar produtos e clientes e acompanhar suas vendas. Caixa administrativo, financeiro, contas e usuários ficam protegidos para gestão.'
+        : 'Seu perfil de gestão pode acessar as áreas administrativas liberadas pela empresa. O Grau apenas consulta dados já autorizados e não altera caixa, estoque ou financeiro.'
+    };
+  }
   const restricted = ['faturamento', 'lucro', 'margem', 'custo', 'financeiro', 'saldo do caixa', 'contas a pagar', 'contas a receber'];
   if (role === 'seller' && restricted.some(term => normalized.includes(term))) {
     return { from: 'grau', text: 'Você não possui permissão para acessar essa informação. Posso ajudar com PDV, produtos, clientes ou suas próprias vendas.' };
+  }
+  if (/(reconcilia|diverg|conferir.*vendas|vendas.*caixa.*estoque)/.test(normalized)) {
+    return {
+      from: 'grau',
+      text: role === 'seller'
+        ? 'A reconciliação completa é restrita aos perfis de gestão. Ela é somente leitura e não corrige nenhum registro.'
+        : 'A reconciliação completa consulta vendas, pagamentos, caixa, estoque e financeiro diretamente no banco, dentro das permissões da empresa. Ela mostra registros conferidos, inconsistências e fontes que não puderam ser verificadas, sem alterar dados. Abra o Centro de Dados para executar a consulta.',
+      action: role === 'seller' ? undefined : { label: 'Abrir Centro de Dados', tab: 'backup' }
+    };
   }
   if (normalized.includes('backup') || normalized.includes('cópia')) {
     return { from: 'grau', text: context.backupCount ? `Há ${context.backupCount} backup(s) local(is) registrados neste navegador. Para validar um arquivo específico, abra Backup e Exportação.` : 'Não há backups locais registrados neste navegador. Abra Backup e Exportação para criar e validar uma cópia.', action: { label: 'Abrir Backup', tab: 'backup' } };
@@ -64,6 +91,10 @@ export function GrauAssistant() {
   const [minimized, setMinimized] = useState(false);
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<GrauMessage[]>([]);
+  const [position, setPosition] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('vistta:grau-position') || '{"right":20,"bottom":20}') as { right: number; bottom: number }; } catch { return { right: 20, bottom: 20 }; }
+  });
+  const dragging = React.useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
   const guide = useMemo(() => guideByTab[activeTab] || guideByTab.dashboard, [activeTab]);
   const context = useMemo<GrauContext>(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -78,7 +109,7 @@ export function GrauAssistant() {
 
   const openAssistant = () => {
     setOpen(true);
-    if (!messages.length) setMessages([{ from: 'grau', text: `Olá! Eu sou o GRAU. Como posso ajudar? Estou no contexto de ${guide.title}.` }]);
+    if (!messages.length) setMessages([{ from: 'grau', text: `Olá! Eu sou o GRAU. Posso explicar qualquer parte do Vistta. Estamos em ${guide.title}: ${guide.text}` }]);
   };
 
   const submit = (event: React.FormEvent) => {
@@ -92,9 +123,23 @@ export function GrauAssistant() {
   const ask = (text: string) => {
     setMessages(previous => [...previous, { from: 'user', text }, answerQuestion(text, activeTab, userRole, context)]);
   };
+  const startDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragging.current = { x: event.clientX, y: event.clientY, right: position.right, bottom: position.bottom };
+  };
+  const moveDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragging.current) return;
+    const next = {
+      right: Math.max(8, Math.min(window.innerWidth - 64, dragging.current.right - (event.clientX - dragging.current.x))),
+      bottom: Math.max(8, Math.min(window.innerHeight - 64, dragging.current.bottom - (event.clientY - dragging.current.y)))
+    };
+    setPosition(next);
+    localStorage.setItem('vistta:grau-position', JSON.stringify(next));
+  };
+  const stopDrag = () => { dragging.current = null; };
 
   return <>
-    <button type="button" onClick={openAssistant} title="Grau IA" aria-label="Abrir Grau IA" className="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-[var(--vistta-plum)] text-white shadow-[0_12px_30px_rgba(48,32,77,.25)] transition-transform hover:-translate-y-0.5 hover:bg-[var(--vistta-violet)] sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-3 sm:text-sm sm:font-bold">
+    <button type="button" onClick={openAssistant} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} title="Grau IA (arraste para mover)" aria-label="Abrir Grau IA" style={{ right: position.right, bottom: position.bottom }} className="fixed z-[60] flex h-14 w-14 touch-none items-center justify-center rounded-full bg-[var(--vistta-plum)] text-white shadow-[0_12px_30px_rgba(48,32,77,.25)] transition-transform hover:-translate-y-0.5 hover:bg-[var(--vistta-violet)] sm:h-auto sm:w-auto sm:gap-2 sm:px-4 sm:py-3 sm:text-sm sm:font-bold">
       <Bot size={20} /><span className="hidden sm:inline">Grau IA</span>
     </button>
     {open && !minimized && <section className="fixed bottom-4 right-4 z-[80] flex max-h-[min(680px,calc(100dvh-2rem))] w-[min(390px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[26px] border border-[var(--vistta-border)] bg-[var(--vistta-surface)] shadow-[0_24px_70px_rgba(15,11,36,.3)]" role="dialog" aria-label="Grau IA">
@@ -105,7 +150,7 @@ export function GrauAssistant() {
         <div className="flex-1 space-y-3 overflow-y-auto p-4">
           {!messages.length && <div className="rounded-2xl border border-[var(--vistta-border)] bg-[var(--vistta-muted-surface)] p-4"><p className="text-sm font-semibold text-[var(--vistta-ink)] dark:text-white">{guide.text}</p></div>}
           {messages.map((message, index) => <div key={`${message.from}-${index}`} className={message.from === 'user' ? 'ml-8' : 'mr-4'}><div className={`rounded-2xl px-4 py-3 text-sm leading-5 ${message.from === 'user' ? 'bg-[var(--vistta-lavender)] text-[var(--vistta-plum)]' : 'bg-[var(--vistta-muted-surface)] text-[var(--vistta-ink)] dark:text-white'}`}>{message.text}</div>{message.action && <button type="button" onClick={() => { setActiveTab(message.action?.tab || 'dashboard'); setOpen(false); }} className="mt-2 inline-flex items-center gap-2 px-1 text-xs font-bold text-[var(--vistta-violet)] hover:underline">{message.action.label}<ArrowRight size={14} /></button>}</div>)}
-          {messages.length <= 1 && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => ask('Como faço uma venda?')} className="rounded-full border border-[var(--vistta-border)] px-3 py-2 text-xs font-semibold text-[var(--vistta-secondary)] hover:border-[var(--vistta-violet)] hover:text-[var(--vistta-violet)]">Como faço uma venda?</button><button type="button" onClick={() => ask('Onde cadastro um cliente?')} className="rounded-full border border-[var(--vistta-border)] px-3 py-2 text-xs font-semibold text-[var(--vistta-secondary)] hover:border-[var(--vistta-violet)] hover:text-[var(--vistta-violet)]">Cadastrar cliente</button></div>}
+          {messages.length <= 1 && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => ask('Como funciona o sistema?')} className="rounded-full border border-[var(--vistta-border)] px-3 py-2 text-xs font-semibold text-[var(--vistta-secondary)] hover:border-[var(--vistta-violet)] hover:text-[var(--vistta-violet)]">Explicar o Vistta</button><button type="button" onClick={() => ask('Como faço uma venda?')} className="rounded-full border border-[var(--vistta-border)] px-3 py-2 text-xs font-semibold text-[var(--vistta-secondary)] hover:border-[var(--vistta-violet)] hover:text-[var(--vistta-violet)]">Como faço uma venda?</button><button type="button" onClick={() => ask('Quais são minhas permissões?')} className="rounded-full border border-[var(--vistta-border)] px-3 py-2 text-xs font-semibold text-[var(--vistta-secondary)] hover:border-[var(--vistta-violet)] hover:text-[var(--vistta-violet)]">Minhas permissões</button></div>}
         </div>
         <form onSubmit={submit} className="flex items-center gap-2 border-t border-[var(--vistta-border)] p-3"><CircleHelp size={18} className="ml-2 shrink-0 text-[var(--vistta-secondary)]" /><input value={question} onChange={event => setQuestion(event.target.value)} placeholder="Digite sua pergunta..." aria-label="Pergunte ao GRAU" className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-[var(--vistta-ink)] outline-none placeholder:text-[var(--vistta-secondary)] dark:text-white" /><button type="submit" aria-label="Enviar pergunta" className="rounded-xl bg-[var(--vistta-plum)] p-2.5 text-white hover:bg-[var(--vistta-violet)]"><Send size={16} /></button></form>
       </section>}

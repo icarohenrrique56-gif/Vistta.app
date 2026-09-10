@@ -24,7 +24,8 @@
     "firebase": "^10.14.1",
     "lucide-react": "^0.364.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
